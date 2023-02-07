@@ -69,6 +69,7 @@ func main() {
 	fmt.Println("")
 
 /*
+  //COPYPASTEDTOREDEEM
 txstr := "0aa001122a0a260a220a200b58e6fd1d838a29a13124101219dd67e8bc8ac4e669339c4b631e56a5780939100120011a2b08c0843d12250a23aa20a76285c58914e32b951c3c0009a4c414667d3cea38fcdf86d541f0bcb0a14f9c871a2d0890f9aea1ba0112240a22202d00d4596578229c4aa33e121d05451ea3ee308728496f2cbc6038a5352c41bdac2a160a14000000000000000000000000000000000000000012ef01122d0880e8eda1ba0112240a2220ea451d5a3da878dde675832ec3f56f17fe176e807b5bc27b8019f26646c10f65ac180122b4010a6f6b647562354172444b74364d72714e4c316847344164663976394e57335043684c576a4e507255444870787063533969745a583339664156653374464342726f6b654a5875664c4d6e5a5874624146596e4c635651576744537357755566786639534469796a4b3255446a755342661241c73b56584c2c9ef03437085c63e7382f5d16f1f1b432e62970bb61ded7b9934322b59d46de35a60843bd0d0982ca5e12da7bac69c87f0c81ddae8225561e2207012a056d2f302f31"
 contractstr := "6382012088a820fa2688dd60f86a8afacf6f5d16fac82a7f9482a242a6680ee045f86f616bb08e8876aa204e340c03faaa70656252739cce36f2d9940c8b33f9f7fc1e47c5848c4646b5f467046fade163b076aa201aa0da2c632d8e31daa3ee33a6e827f0602412bcd4d9e1800f61219b0060b17f6888ac"
 secret := "7cc86ae4683e6f36849ff3067610b15abee2c12cfc80aabd354509611091d156"
@@ -85,10 +86,17 @@ secret := "7cc86ae4683e6f36849ff3067610b15abee2c12cfc80aabd354509611091d156"
 	fmt.Println(secret)
 	fmt.Println("")
   fmt.Println("txstr := \""+txstr+"\"\ncontractstr := \""+contractstr+"\"\nsecret := \""+secret+"\"\n")
+  time.Sleep(1 * time.Minute)
 
 
+/*
+  //COPYPASTED TO REFUND I HAVE TO MINE SOME BLOCKS
+txstr := "0a9e0112280a240a220a2050d4f886b92238b72c88d5c667c4e4fbb16215c6a0dd7e8aefc4bee19faceffd20011a2b08c0843d12250a23aa202dd9df11bf2987f0384f8e26769016d6c150e52dfc45d3aa4f9d1f37713e287a871a2d0890f9aea1ba0112240a2220264113e2dbf1eada5be953cf5873f4e49b986aefe84ce82ecb42f80f425296e3ac2a160a14000000000000000000000000000000000000000012ef01122d0880e8eda1ba0112240a2220203f0d77a2933b7149d0ab2f5e84fe91b852244ad2834f8e15bf3f5042b2770dac180122b4010a6f6b64756235426344444b564575335a4a32777369367a466d4e464b745a515a65387365545a7072353662715477324836595a6674564c4e4872323779326258435966636f7a48546b39515654545335655378446f44335972416f6a57554734734e665761773850336b717268475a5312411768eb559f2171d9a57a3e9cf24ac298e4ae90b30546f599c4681c9335e25952ccb6283315e9a93eee6ab812f71b81a46b178d017d0b355ac6597dc587b00989012a056d2f302f31"
+contractstr := "6382012088a820f7d345e2d815deee60c68ffc83f4435828ce977067b97242746b68ae81a0a1e98876aa2040e27e7256db4e9ceddfa207744831b4521ea9637bb746f31184788a820218fe670426dde363b076aa20a7e2f8592fbb80dedd44cdefb2ddc2732999da5d982fa14f4cdfa9ab11c07ee46888ac"
+*/
 
-redeemContract(contractstr, txstr, secret, mnemonics, daemonClient, ctx, keysFile)
+//redmeemContract(contractstr, txstr, secret, mnemonics, daemonClient, ctx, keysFile)
+refundContract(contractstr, txstr, mnemonics, daemonClient, ctx, keysFile)
 }
 
 func atomicSwapContract(pkhMe, pkhThem []byte, locktime int64, secretHash []byte) ([]byte, error) {
@@ -149,6 +157,15 @@ func redeemP2SHContract(contract, sig, pubkey, secret []byte) ([]byte, error) {
 	return b.Script()
 
 }
+func refundP2SHContract(contract, sig, pubkey []byte) ([]byte, error) {
+  b := txscript.NewScriptBuilder()
+  b.AddData(sig)
+  b.AddData(pubkey)
+  b.AddInt64(0)
+  b.AddData(contract)
+  return b.Script()
+}
+
 
 func sha256Hash(x []byte) []byte {
 	h := sha256.Sum256(x)
@@ -363,7 +380,7 @@ func initiateContract(reciptAddress string, mnemonics []string, daemonClient pb.
 	fmt.Println(reciptAddr)
 	fmt.Println("")
 
-	locktime := time.Now().Add(24 * time.Hour).Unix()
+	locktime := time.Now().Add(1 * time.Minute).Unix()
   fmt.Println("BLAKE2BRECIPT",getBlake2b(reciptAddr.ScriptAddress()))
 	contract, err := atomicSwapContract(getBlake2b(refundAddr.ScriptAddress()), getBlake2b(reciptAddr.ScriptAddress()),
 		locktime, secretHash)
@@ -736,6 +753,208 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
 
 
   printContract("SigScript", sigScript)
+
+
+  rpcTransaction := appmessage.DomainTransactionToRPCTransaction(domainTransaction)
+  printRpcTransaction(rpcTransaction)
+  fmt.Println("")
+  kaspadClient, err := rpcclient.NewRPCClient("localhost:16610")
+
+  if err != nil {
+    fmt.Println("error:")
+    fmt.Println(err)
+  }
+  txID,err :=sendTransaction(kaspadClient, rpcTransaction)
+  if err != nil {
+    log.Fatal(err)
+  }
+	fmt.Println("Transactions were sent successfully!")
+	fmt.Println("Transaction ID(s): ")
+  fmt.Printf("\t%s\n", txID)
+}
+func parsePushes(contractr []byte,addresses []string, keysFile *keys.File)(*util.Address, *string, *util.Address, *string, string, int64, uint64){
+  pushes, err := txscript.ExtractAtomicSwapDataPushes(0, contractr)
+  if err != nil {
+    log.Fatal(err)
+  }
+  if pushes == nil {
+    log.Fatal("contract is not an atomic swap script recognized by this tool")
+  }
+
+  recipientAddr, recipient_path := searchAddressByBlake2b(addresses,pushes.RecipientBlake2b[:],keysFile.ExtendedPublicKeys, keysFile.ECDSA)
+  if err != nil {
+    log.Fatal(err)
+  }
+  fmt.Println("Pushes - Recipient from Contract:")
+  fmt.Println(*recipientAddr, *recipient_path)
+  fmt.Println("")
+
+  refundAddr, refund_path := searchAddressByBlake2b(addresses,pushes.RefundBlake2b[:],keysFile.ExtendedPublicKeys, keysFile.ECDSA)
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  if refundAddr == nil {
+    log.Fatal("I don't know the key to refund this contract")
+  }
+  fmt.Println("Pushes - Refund from Contract:")
+  fmt.Println(*refundAddr,*refund_path)
+  fmt.Println("")
+
+  fmt.Println("Pushes - Secret hash from Contract:")
+  fmt.Println(hex.EncodeToString(pushes.SecretHash[:]))
+  fmt.Println("")
+  
+  fmt.Println("Pushes - Secret size from Contract:")
+  fmt.Println(pushes.SecretSize)
+  fmt.Println("")
+
+  fmt.Println("Pushes - LockTime from Contract:")
+  fmt.Println(pushes.LockTime)
+  fmt.Println("")
+  return recipientAddr, recipient_path, refundAddr, refund_path, hex.EncodeToString(pushes.SecretHash[:]), pushes.SecretSize, pushes.LockTime
+
+}
+func refundContract(contractstr string, txstr string, mnemonics []string, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) {
+	contractr, _ := hex.DecodeString(contractstr)
+	tx, _ := hex.DecodeString(txstr)
+	printPartiallySignedTx(tx)
+	transaction, _ := serialization.DeserializePartiallySignedTransaction(tx)
+	txid := consensushashing.TransactionID(transaction.Tx)
+	fmt.Println("Transaction ID:")
+	fmt.Println(txid)
+	fmt.Println("")
+	fmt.Println("**********************REFUND*************************")
+	fmt.Println("")
+	addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
+	addresses := addressesResponse.Address
+	fmt.Println("Addresses:",len(addresses))
+	//fmt.Println(addresses)
+	fmt.Println("")
+
+  recipientAddr, recipient_path, refundAddr, refund_path, _, _, lockTime:= parsePushes(contractr, addresses,keysFile)
+	fmt.Println("PATH:", recipient_path)
+
+//this is an hack to not refactor :-d
+  recipientAddr,recipient_path = refundAddr, refund_path
+
+	//empty := getEmpty(keysFile.ExtendedPublicKeys, recipient_path)
+
+  extendedKey, _ := extendedKeyFromMnemonicAndPath(mnemonics[0], defaultPath(false), dagParams)
+
+	derivedKey, err := extendedKey.DeriveFromPath(*recipient_path)
+  if err != nil { log.Fatal(err)}
+
+  derivedPublicKey, err := derivedKey.Public()
+  if err != nil { log.Fatal(err)}
+
+	fmt.Println("")
+	fmt.Println("Out of Empty:")
+	fmt.Println("extended:\n", extendedKey)
+	fmt.Println("keypair:\n", derivedKey.String())
+  fmt.Println("derivedPublicKey:\n",derivedPublicKey.String())
+//  fmt.Println("derivedPublicKeyiBlake2b:\n",getBlake2b(derivedPublicKey))
+
+  publicKey,_ := derivedKey.PublicKey()
+
+  var serializedPublicKey []byte
+      serializedECDSAPublicKey, err := publicKey.Serialize()
+      if err != nil {log.Fatal(err)}
+      serializedPublicKey = serializedECDSAPublicKey[:]
+      fmt.Println("publicKeyECDSA;\n", serializedPublicKey)
+      fmt.Println("PublicKeyECDSA:",serializedPublicKey)
+      fmt.Println("PublicKeyECDSABlake2b:\n",hex.EncodeToString(getBlake2b(serializedPublicKey)))
+      schnorrPublicKey, err := publicKey.ToSchnorr()
+
+      if err != nil {log.Fatal(err)}
+
+      serializedSchnorrPublicKey, err := schnorrPublicKey.Serialize()
+      if err != nil {log.Fatal(err)}
+      serializedPublicKey = serializedSchnorrPublicKey[:]
+      fmt.Println("serializedPublicKeyShnorr:\n",serializedPublicKey)
+      fmt.Println("serializedPublicKeyiShonrrString:\n",hex.EncodeToString(serializedPublicKey))
+      fmt.Println("serializedPublicKeyiShnorrBlake2b:\n",hex.EncodeToString(getBlake2b(serializedPublicKey)))
+
+    if keysFile.ECDSA {
+      serializedECDSAPublicKey, err := publicKey.Serialize()
+      if err != nil {log.Fatal(err)}
+      serializedPublicKey = serializedECDSAPublicKey[:]
+      fmt.Println("publicKeyECDSA;\n", serializedPublicKey)
+      fmt.Println("PublicKeyECDSA:",serializedPublicKey)
+      fmt.Println("PublicKeyECDSABlake2b:\n",hex.EncodeToString(getBlake2b(serializedPublicKey)))
+
+       } else {
+      schnorrPublicKey, err := publicKey.ToSchnorr()
+
+      if err != nil {log.Fatal(err)}
+
+      serializedSchnorrPublicKey, err := schnorrPublicKey.Serialize()
+      if err != nil {log.Fatal(err)}
+      serializedPublicKey = serializedSchnorrPublicKey[:]
+    }
+  fmt.Println("serializedPublicKey:\n",serializedPublicKey)
+  fmt.Println("serializedPublicKeyString:\n",hex.EncodeToString(serializedPublicKey))
+  fmt.Println("serializedPublicKeyBlake2b:\n",hex.EncodeToString(getBlake2b(serializedPublicKey)))
+
+  regenerated,_ := util.NewAddressPublicKey(serializedPublicKey[:], dagParams.Prefix)
+  fmt.Println("regenerated address:\n",regenerated)
+
+	script_pubkey, _ := txscript.PayToAddrScript(*recipientAddr)
+
+	outputs := []*externalapi.DomainTransactionOutput{{
+		//Value:           (transaction.Tx.Outputs[0].Value - uint64(feePerInput)*uint64(len(inputs))),
+		Value:           (transaction.Tx.Outputs[0].Value - uint64(feePerInput)*uint64(1)),
+		ScriptPublicKey: script_pubkey,
+	}}
+
+	fmt.Println("")
+  fmt.Println("transaction.Tx.Outputs[0].ScriptPublicKey:\n", hex.EncodeToString(transaction.Tx.Outputs[0].ScriptPublicKey.Script))
+	fmt.Println("")
+  script_public_key,_ :=  txscript.NewScriptBuilder().AddOp(txscript.OpBlake2b).AddData(transaction.Tx.Outputs[0].ScriptPublicKey.Script).AddOp(txscript.OpEqual).Script()
+  scp := &externalapi.ScriptPublicKey{
+    Script: script_public_key,
+    Version: constants.MaxScriptPublicKeyVersion,
+  }
+
+  scp =scp
+  inputs := []*externalapi.DomainTransactionInput{{
+    PreviousOutpoint: externalapi.DomainOutpoint{
+      TransactionID: *txid,
+      Index:         0,
+    },
+    SigOpCount: 1,
+    //SignatureScript: contractr,
+    //UTXOEntry: utxo.NewUTXOEntry(transaction.Tx.Outputs[0].Value,transaction.Tx.Outputs[0].ScriptPublicKey,false,0),
+    UTXOEntry: utxo.NewUTXOEntry(transaction.Tx.Outputs[0].Value,transaction.Tx.Outputs[0].ScriptPublicKey,false,0),
+  }}
+
+
+	domainTransaction := &externalapi.DomainTransaction{
+		Version: constants.MaxTransactionVersion,
+		Outputs: outputs,
+		Inputs: inputs,
+		//LockTime: pushes.LockTime,
+		LockTime:     lockTime,
+		SubnetworkID: subnetworks.SubnetworkIDNative,
+		Gas:          0,
+		Payload:      nil,
+	}
+  sighashReusedValues := &consensushashing.SighashReusedValues{}
+
+	signature,_ := rawTxInSignature(derivedKey, domainTransaction, 0, consensushashing.SigHashAll, sighashReusedValues, keysFile.ECDSA)
+	refundSigScript, _ := refundP2SHContract(contractr,  signature, serializedPublicKey)
+
+  domainTransaction.Inputs[0].SignatureScript =   refundSigScript
+
+  fmt.Println("signature:\n",signature)
+  fmt.Println("signatureString:\n",hex.EncodeToString(signature))
+  fmt.Println("signatureBlake2b:\n",hex.EncodeToString(getBlake2b(signature)))
+
+
+  printContract("Initial", contractr)
+
+
+  printContract("Redeem", refundSigScript)
 
 
   rpcTransaction := appmessage.DomainTransactionToRPCTransaction(domainTransaction)
