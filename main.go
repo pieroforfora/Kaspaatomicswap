@@ -38,13 +38,13 @@ import (
 
 var dagParams = &dagconfig.DevnetParams
 var walletpath = "/home/pieroforfora/.kaspawallet/kaspa-devnet/keys.json"
-const secretSize = 32
+const secretSize = 32 
 
 var feePerInput = uint64(30000)
 
 // var amount = uint64(1)
 var amountInSompi = uint64(1000000)
-
+var reciptAddress util.Address 
 func main() {
 	flag.Parse()
 
@@ -63,7 +63,7 @@ func main() {
 	mnemonics, _ := keysFile.DecryptMnemonics(password)
 
 	reciptAddressz, _ := daemonClient.NewAddress(ctx, &pb.NewAddressRequest{})
-	reciptAddress, _ := util.DecodeAddress(reciptAddressz.Address, dagParams.Prefix)
+	reciptAddress, _ = util.DecodeAddress(reciptAddressz.Address, dagParams.Prefix)
 	_ = reciptAddress //Rimuovere
 	fmt.Println("RECIPT ADDRESS:")
 	fmt.Println(reciptAddressz.Address)
@@ -356,7 +356,7 @@ func initiateContract(reciptAddress string, mnemonics []string, daemonClient pb.
 
 	locktime := time.Now().Add(24 * time.Hour).Unix()
   fmt.Println("BLAKE2BRECIPT",getBlake2b(reciptAddr.ScriptAddress()))
-	contract, err := atomicSwapContract(refundAddr.ScriptAddress(), reciptAddr.ScriptAddress(),
+	contract, err := atomicSwapContract(getBlake2b(refundAddr.ScriptAddress()), getBlake2b(reciptAddr.ScriptAddress()),
 		locktime, secretHash)
 	if err != nil {
 		log.Fatal(err)
@@ -558,7 +558,7 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
 	fmt.Println("")
 	fmt.Println("**********************REDEEM*************************")
 	fmt.Println("")
-
+/*
 	pushes, err := txscript.ExtractAtomicSwapDataPushes(0, contractr)
 	if err != nil {
 		log.Fatal(err)
@@ -590,7 +590,8 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
 	fmt.Println("Pushes - Secret hash from Contract:")
 	fmt.Println(hex.EncodeToString(pushes.SecretHash[:]))
 	fmt.Println("")
-
+*/
+  recipientAddr := reciptAddress 
 	contractHash, _ := util.NewAddressScriptHash(contractr, dagParams.Prefix)
 	fmt.Println("contract hash:")
 	fmt.Println(contractHash)
@@ -598,9 +599,6 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
 
 	//addresses := getAddresses(daemonClient, ctx)
 	addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
-	if err != nil {
-		log.Fatal(err)
-	}
 	addresses := addressesResponse.Address
 	fmt.Println("Addresses:")
 	fmt.Println(len(addresses))
