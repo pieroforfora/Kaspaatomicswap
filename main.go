@@ -86,20 +86,21 @@ secret := "7cc86ae4683e6f36849ff3067610b15abee2c12cfc80aabd354509611091d156"
 	fmt.Println(secret)
 	fmt.Println("")
   fmt.Println("txstr := \""+txstr+"\"\ncontractstr := \""+contractstr+"\"\nsecret := \""+secret+"\"\n")
-  time.Sleep(1 * time.Minute)
+  fmt.Println("wait 2 minutes to let the cltv(1minute) expire");
+  time.Sleep(2 * time.Minute)
 
 
 /*
   //COPYPASTED TO REFUND I HAVE TO MINE SOME BLOCKS
-txstr := "0a9e0112280a240a220a2050d4f886b92238b72c88d5c667c4e4fbb16215c6a0dd7e8aefc4bee19faceffd20011a2b08c0843d12250a23aa202dd9df11bf2987f0384f8e26769016d6c150e52dfc45d3aa4f9d1f37713e287a871a2d0890f9aea1ba0112240a2220264113e2dbf1eada5be953cf5873f4e49b986aefe84ce82ecb42f80f425296e3ac2a160a14000000000000000000000000000000000000000012ef01122d0880e8eda1ba0112240a2220203f0d77a2933b7149d0ab2f5e84fe91b852244ad2834f8e15bf3f5042b2770dac180122b4010a6f6b64756235426344444b564575335a4a32777369367a466d4e464b745a515a65387365545a7072353662715477324836595a6674564c4e4872323779326258435966636f7a48546b39515654545335655378446f44335972416f6a57554734734e665761773850336b717268475a5312411768eb559f2171d9a57a3e9cf24ac298e4ae90b30546f599c4681c9335e25952ccb6283315e9a93eee6ab812f71b81a46b178d017d0b355ac6597dc587b00989012a056d2f302f31"
-contractstr := "6382012088a820f7d345e2d815deee60c68ffc83f4435828ce977067b97242746b68ae81a0a1e98876aa2040e27e7256db4e9ceddfa207744831b4521ea9637bb746f31184788a820218fe670426dde363b076aa20a7e2f8592fbb80dedd44cdefb2ddc2732999da5d982fa14f4cdfa9ab11c07ee46888ac"
-*/
+txstr := "0a9e0112280a240a220a20f74e1413f096491dca864a27744b43a36d9e6fe22ea6063fc44fc50f46e9fd4820011a2b08c0843d12250a23aa203559d3fd818a3b1cd87957726832c56fb1a5b9eb516d80328fff972435e273bb871a2d0890f9aea1ba0112240a22201cd5e7d6e056f9d4c3e2f3b22b468fe3432519df5f356cc2b3eac529435c3089ac2a160a14000000000000000000000000000000000000000012ef01122d0880e8eda1ba0112240a2220203f0d77a2933b7149d0ab2f5e84fe91b852244ad2834f8e15bf3f5042b2770dac180122b4010a6f6b64756235426344444b564575335a4a32777369367a466d4e464b745a515a65387365545a7072353662715477324836595a6674564c4e4872323779326258435966636f7a48546b39515654545335655378446f44335972416f6a57554734734e665761773850336b717268475a53124163dce473a6d887cf0c3a37dcc9319934185bfe6872dc6ec8609497d0b3d1b774bcc4153eb4ab7f9f7b5d6c696ecc4442a1cdcd8a78116fd80eff110eca0778f0012a056d2f302f31"
+contractstr := "6382012088a8201f9a814a3d2e7e31d0d236efbcdc1571728e89d0603d1d97dd4a06b7f328b9838876aa205304a912e9795dfefb32ad8156b9193ccfba24e95029829dd80f1b2cfd188ca067046591e263b076aa20636111be77c98bdd66994b2b225551d594f06ea97d27f3b51444d3c3abc04c5b6888ac"
 
+*/
 //redmeemContract(contractstr, txstr, secret, mnemonics, daemonClient, ctx, keysFile)
 refundContract(contractstr, txstr, mnemonics, daemonClient, ctx, keysFile)
 }
 
-func atomicSwapContract(pkhMe, pkhThem []byte, locktime int64, secretHash []byte) ([]byte, error) {
+func atomicSwapContract(pkhMe, pkhThem []byte, locktime uint64, secretHash []byte) ([]byte, error) {
 	b := txscript.NewScriptBuilder()
   b.AddOp(txscript.OpIf) // Normal redeem path
   {
@@ -126,7 +127,7 @@ func atomicSwapContract(pkhMe, pkhThem []byte, locktime int64, secretHash []byte
   {
     // Verify locktime and drop it off the stack (which is not done by
     // CLTV).
-    b.AddInt64(locktime)
+    b.AddLockTimeNumber(locktime)
     b.AddOp(txscript.OpCheckLockTimeVerify)
     //remove as SomeOne235 commit in txscripts extractAtomicSwapDataPushes
     //b.AddOp(txscript.OpDrop)
@@ -380,7 +381,7 @@ func initiateContract(reciptAddress string, mnemonics []string, daemonClient pb.
 	fmt.Println(reciptAddr)
 	fmt.Println("")
 
-	locktime := time.Now().Add(1 * time.Minute).Unix()
+	locktime := uint64(time.Now().Add(1 * time.Minute).Unix())
   fmt.Println("BLAKE2BRECIPT",getBlake2b(reciptAddr.ScriptAddress()))
 	contract, err := atomicSwapContract(getBlake2b(refundAddr.ScriptAddress()), getBlake2b(reciptAddr.ScriptAddress()),
 		locktime, secretHash)
@@ -833,6 +834,8 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
 	fmt.Println("")
 
   recipientAddr, recipient_path, refundAddr, refund_path, _, _, lockTime:= parsePushes(contractr, addresses,keysFile)
+  //haCK TO B3 R3M0V3D
+  lockTime=lockTime
 	fmt.Println("PATH:", recipient_path)
 
 //this is an hack to not refactor :-d
@@ -923,6 +926,9 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
       Index:         0,
     },
     SigOpCount: 1,
+    Sequence:        constants.MaxTxInSequenceNum - 1,
+
+    ////Sequence: lockTime,
     //SignatureScript: contractr,
     //UTXOEntry: utxo.NewUTXOEntry(transaction.Tx.Outputs[0].Value,transaction.Tx.Outputs[0].ScriptPublicKey,false,0),
     UTXOEntry: utxo.NewUTXOEntry(transaction.Tx.Outputs[0].Value,transaction.Tx.Outputs[0].ScriptPublicKey,false,0),
@@ -956,7 +962,7 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
 
   printContract("Redeem", refundSigScript)
 
-
+  domainTransaction.Gas=0
   rpcTransaction := appmessage.DomainTransactionToRPCTransaction(domainTransaction)
   printRpcTransaction(rpcTransaction)
   fmt.Println("")
