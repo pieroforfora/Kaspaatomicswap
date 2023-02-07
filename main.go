@@ -44,7 +44,6 @@ var feePerInput = uint64(30000)
 
 // var amount = uint64(1)
 var amountInSompi = uint64(1000000)
-var reciptAddress util.Address 
 func main() {
 	flag.Parse()
 
@@ -63,7 +62,7 @@ func main() {
 	mnemonics, _ := keysFile.DecryptMnemonics(password)
 
 	reciptAddressz, _ := daemonClient.NewAddress(ctx, &pb.NewAddressRequest{})
-	reciptAddress, _ = util.DecodeAddress(reciptAddressz.Address, dagParams.Prefix)
+	reciptAddress, _ := util.DecodeAddress(reciptAddressz.Address, dagParams.Prefix)
 	_ = reciptAddress //Rimuovere
 	fmt.Println("RECIPT ADDRESS:")
 	fmt.Println(reciptAddressz.Address)
@@ -210,6 +209,16 @@ func getAddressPath(addresses []string, address string, extendedPublicKeys []str
 	}
 	return nil
 }
+func searchAddressByBlake2b(addresses []string, blake []byte, extendedPublicKeys []string, ecdsa bool) (*util.Address, *string) {
+  for i := range addresses {
+    path := fmt.Sprintf("m/%d/%d", libkaspawallet.ExternalKeychain, i+1)
+    new_address, _ := libkaspawallet.Address(dagParams, extendedPublicKeys, 1, path, ecdsa)
+    if hex.EncodeToString(getBlake2b(new_address.ScriptAddress())) == hex.EncodeToString(blake){
+      return &new_address, &path
+    }
+  }
+  return nil,nil
+}
 
 func isTransactionFullySigned(partiallySignedTransaction *serialization.PartiallySignedTransaction) bool {
 	for _, input := range partiallySignedTransaction.PartiallySignedInputs {
@@ -316,7 +325,7 @@ func getEmpty(extendedPublicKeys []string, derivationPath string) []*serializati
 }
 
 func sendTransaction(client *rpcclient.RPCClient, rpcTransaction *appmessage.RPCTransaction) (string, error) {
-  submitTransactionResponse, err := client.SubmitTransaction(rpcTransaction, false)
+  submitTransactionResponse, err := client.SubmitTransaction(rpcTransaction, true)
   if err != nil {
     return "", errors.Wrapf(err, "error submitting transaction")
   }
@@ -558,7 +567,13 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
 	fmt.Println("")
 	fmt.Println("**********************REDEEM*************************")
 	fmt.Println("")
-/*
+	addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
+	addresses := addressesResponse.Address
+	fmt.Println("Addresses:",len(addresses))
+	//fmt.Println(addresses)
+	fmt.Println("")
+
+
 	pushes, err := txscript.ExtractAtomicSwapDataPushes(0, contractr)
 	if err != nil {
 		log.Fatal(err)
@@ -567,53 +582,44 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
 		log.Fatal("contract is not an atomic swap script recognized by this tool")
 	}
 
-	recipientAddr, err := util.NewAddressPublicKey(pushes.RecipientBlake2b[:],
-		dagParams.Prefix)
+	recipientAddr, recipient_path := searchAddressByBlake2b(addresses,pushes.RecipientBlake2b[:],keysFile.ExtendedPublicKeys, keysFile.ECDSA)
 	if err != nil {
 		log.Fatal(err)
 	}
-
+  if recipientAddr == nil {
+    log.Fatal("I don't know the key to redeem this contract")
+  }
 	fmt.Println("Pushes - Recipient from Contract:")
-	fmt.Println(recipientAddr)
+	fmt.Println(*recipientAddr, *recipient_path)
 	fmt.Println("")
 
-	refundAddr, err := util.NewAddressPublicKey(pushes.RefundBlake2b[:],
-		dagParams.Prefix)
+	refundAddr, refund_path := searchAddressByBlake2b(addresses,pushes.RefundBlake2b[:],keysFile.ExtendedPublicKeys, keysFile.ECDSA)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Pushes - Reefund from Contract:")
-	fmt.Println(refundAddr)
+	fmt.Println("Pushes - Refund from Contract:")
+	fmt.Println(*refundAddr,*refund_path)
 	fmt.Println("")
 
 	fmt.Println("Pushes - Secret hash from Contract:")
 	fmt.Println(hex.EncodeToString(pushes.SecretHash[:]))
 	fmt.Println("")
-*/
-  recipientAddr := reciptAddress 
+
+  //recipientAddr := reciptAddress
 	contractHash, _ := util.NewAddressScriptHash(contractr, dagParams.Prefix)
 	fmt.Println("contract hash:")
 	fmt.Println(contractHash)
 	fmt.Println("")
 
-	//addresses := getAddresses(daemonClient, ctx)
-	addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
-	addresses := addressesResponse.Address
-	fmt.Println("Addresses:")
-	fmt.Println(len(addresses))
-	//fmt.Println(addresses)
-	fmt.Println("")
 
-	recipient_address_path := *getAddressPath(addresses, recipientAddr.EncodeAddress(), keysFile.ExtendedPublicKeys, keysFile.ECDSA)
+	fmt.Println("PATH:", recipient_path)
 
-	fmt.Println("PATH:", recipient_address_path)
-
-	//empty := getEmpty(keysFile.ExtendedPublicKeys, recipient_address_path)
+	//empty := getEmpty(keysFile.ExtendedPublicKeys, recipient_path)
 
   extendedKey, _ := extendedKeyFromMnemonicAndPath(mnemonics[0], defaultPath(false), dagParams)
 
-	derivedKey, err := extendedKey.DeriveFromPath(recipient_address_path)
+	derivedKey, err := extendedKey.DeriveFromPath(*recipient_path)
   if err != nil { log.Fatal(err)}
 
   derivedPublicKey, err := derivedKey.Public()
@@ -670,7 +676,8 @@ func redeemContract(contractstr string, txstr string, secret string, mnemonics [
   regenerated,_ := util.NewAddressPublicKey(serializedPublicKey[:], dagParams.Prefix)
   fmt.Println("regenerated address:\n",regenerated)
 
-	script_pubkey, _ := txscript.PayToAddrScript(recipientAddr)
+	script_pubkey, _ := txscript.PayToAddrScript(*recipientAddr)
+
 	outputs := []*externalapi.DomainTransactionOutput{{
 		//Value:           (transaction.Tx.Outputs[0].Value - uint64(feePerInput)*uint64(len(inputs))),
 		Value:           (transaction.Tx.Outputs[0].Value - uint64(feePerInput)*uint64(1)),

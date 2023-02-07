@@ -1,5 +1,5 @@
 2023-02-07 02:36:46.683 [INF] KASD: Version 0.12.11
-2023-02-07 02:36:46.683 [INF] KASD: Loading database from '/home/steal/.kaspad/kaspa-devnet/datadir2'
+2023-02-07 02:36:46.683 [INF] KASD: Loading database from '/home/pieroforfora/.kaspad/kaspa-devnet/datadir2'
 2023-02-07 02:36:46.876 [INF] ADXR: Loaded 0 addresses and 0 banned addresses
 2023-02-07 02:36:46.876 [WRN] ADXR: Skipping specified external IP: address 127.0.0.1 is not routable
 2023-02-07 02:36:46.952 [INF] KASD: UTXO index started
