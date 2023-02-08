@@ -13,4 +13,3 @@ https://github.com/someone235/kaspad/tree/fix-ExtractAtomicSwapDataPushes
 branch
 
 download it locally and use replace method in the go.mod file
-
