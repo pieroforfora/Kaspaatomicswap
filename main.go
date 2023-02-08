@@ -10,7 +10,7 @@ import (
 
 	"crypto/sha256"
 	"time"
-
+  "math"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/daemon/client"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/daemon/pb"
 	"github.com/kaspanet/kaspad/cmd/kaspawallet/keys"
@@ -42,6 +42,8 @@ const secretSize = 32
 
 var feePerInput = uint64(30000)
 
+var locktime = uint64(time.Now().Add(10 * time.Second).Unix()*1000)
+
 // var amount = uint64(1)
 var amountInSompi = uint64(1000000)
 func main() {
@@ -53,7 +55,7 @@ func main() {
 		fmt.Println(err)
 	}
 	defer tearDown()
-	ctx, cancel := context.WithTimeout(context.Background(), (120 * time.Second))
+	ctx, cancel := context.WithTimeout(context.Background(), (10 * time.Minute))
 	defer cancel()
 
 	keysFile, _ := keys.ReadKeysFile(dagParams, walletpath)
@@ -74,7 +76,7 @@ txstr := "0aa001122a0a260a220a200b58e6fd1d838a29a13124101219dd67e8bc8ac4e669339c
 contractstr := "6382012088a820fa2688dd60f86a8afacf6f5d16fac82a7f9482a242a6680ee045f86f616bb08e8876aa204e340c03faaa70656252739cce36f2d9940c8b33f9f7fc1e47c5848c4646b5f467046fade163b076aa201aa0da2c632d8e31daa3ee33a6e827f0602412bcd4d9e1800f61219b0060b17f6888ac"
 secret := "7cc86ae4683e6f36849ff3067610b15abee2c12cfc80aabd354509611091d156"
 */
-
+/*
 	txstr, contractstr, secret := initiateContract(reciptAddress.String(), mnemonics, daemonClient, ctx, keysFile)
 	fmt.Println("TXSTR: ")
 	fmt.Println(txstr)
@@ -86,16 +88,17 @@ secret := "7cc86ae4683e6f36849ff3067610b15abee2c12cfc80aabd354509611091d156"
 	fmt.Println(secret)
 	fmt.Println("")
   fmt.Println("txstr := \""+txstr+"\"\ncontractstr := \""+contractstr+"\"\nsecret := \""+secret+"\"\n")
-  fmt.Println("wait 2 minutes to let the cltv(1minute) expire");
-  time.Sleep(2 * time.Minute)
-
-
-/*
-  //COPYPASTED TO REFUND I HAVE TO MINE SOME BLOCKS
-txstr := "0a9e0112280a240a220a20f74e1413f096491dca864a27744b43a36d9e6fe22ea6063fc44fc50f46e9fd4820011a2b08c0843d12250a23aa203559d3fd818a3b1cd87957726832c56fb1a5b9eb516d80328fff972435e273bb871a2d0890f9aea1ba0112240a22201cd5e7d6e056f9d4c3e2f3b22b468fe3432519df5f356cc2b3eac529435c3089ac2a160a14000000000000000000000000000000000000000012ef01122d0880e8eda1ba0112240a2220203f0d77a2933b7149d0ab2f5e84fe91b852244ad2834f8e15bf3f5042b2770dac180122b4010a6f6b64756235426344444b564575335a4a32777369367a466d4e464b745a515a65387365545a7072353662715477324836595a6674564c4e4872323779326258435966636f7a48546b39515654545335655378446f44335972416f6a57554734734e665761773850336b717268475a53124163dce473a6d887cf0c3a37dcc9319934185bfe6872dc6ec8609497d0b3d1b774bcc4153eb4ab7f9f7b5d6c696ecc4442a1cdcd8a78116fd80eff110eca0778f0012a056d2f302f31"
-contractstr := "6382012088a8201f9a814a3d2e7e31d0d236efbcdc1571728e89d0603d1d97dd4a06b7f328b9838876aa205304a912e9795dfefb32ad8156b9193ccfba24e95029829dd80f1b2cfd188ca067046591e263b076aa20636111be77c98bdd66994b2b225551d594f06ea97d27f3b51444d3c3abc04c5b6888ac"
-
+  fmt.Println("wait 20 seconds to let the cltv expire");
+  time.Sleep(20 * time.Second)
 */
+
+
+  //COPYPASTED TO REFUND I HAVE TO MINE SOME BLOCKS
+txstr := "0aa001122a0a260a220a201ac14fece765e3da03d0c9a3ec8f668388c2d3b798b02f25966b93b1dfdd614d100120011a2b08c0843d12250a23aa201a1de9960e7e41ed78d5fc0b76203773a38539695364b2207af4c67cd13d98e4871a2d0890f9aea1ba0112240a22208bfe29cdc6987a9916940fc43bde426420616470615c7caf9abb6e0c60397fb3ac2a160a14000000000000000000000000000000000000000012ef01122d0880e8eda1ba0112240a2220b644f9854d909f6b436dcafcc6d698f36e6b20b9234acfe2a8852a8004197011ac180122b4010a6f6b64756235425a4c4e66545174533252374761463169344532396d79507747503365415076645a504337574a36353434467867673138723750656d764b455850427478376e72384848354d6a39704c32467861343457643331756a666631474e465076505877524a4c796b6d69646a1241dd81ad8dddc842c51fb3d28a52fd2c2f481e433ef35e5760e62a7e919337dae43c83ad53382929fcccbeefd881ece4c9c5bc3593861258eb4fe2e2f544f14c7d012a056d2f302f31"
+contractstr := "6382012088a8209820508114315eb9b8680c59604a5c364f7c00bc8b65b71d8568fcfdaf3e1ff98876aa204628d353e01f7095ed07236a28c8ea76a904cca7c8c3b5920cee54ceb38643dc670698153e328601b076aa204398a8fefa3b1e84a0f7219cc257c34ab382e8c3d300929a9b6ae179a6e6cf4c6888ac"
+//secret := "3858261ef99c2dd089aaff22ade4a65d7c67e14b1d76c51c3354d42f81263641"
+
+
 //redmeemContract(contractstr, txstr, secret, mnemonics, daemonClient, ctx, keysFile)
 refundContract(contractstr, txstr, mnemonics, daemonClient, ctx, keysFile)
 }
@@ -130,7 +133,7 @@ func atomicSwapContract(pkhMe, pkhThem []byte, locktime uint64, secretHash []byt
     b.AddLockTimeNumber(locktime)
     b.AddOp(txscript.OpCheckLockTimeVerify)
     //remove as SomeOne235 commit in txscripts extractAtomicSwapDataPushes
-    //b.AddOp(txscript.OpDrop)
+//    b.AddOp(txscript.OpDrop)
     // Verify our signature is being used to redeem the output.  This would
     // normally end with OP_EQUALVERIFY OP_CHECKSIG but this has been moved
     // outside of the branch to save a couple bytes.
@@ -381,7 +384,6 @@ func initiateContract(reciptAddress string, mnemonics []string, daemonClient pb.
 	fmt.Println(reciptAddr)
 	fmt.Println("")
 
-	locktime := uint64(time.Now().Add(1 * time.Minute).Unix())
   fmt.Println("BLAKE2BRECIPT",getBlake2b(reciptAddr.ScriptAddress()))
 	contract, err := atomicSwapContract(getBlake2b(refundAddr.ScriptAddress()), getBlake2b(reciptAddr.ScriptAddress()),
 		locktime, secretHash)
@@ -827,7 +829,10 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
 	fmt.Println("")
 	fmt.Println("**********************REFUND*************************")
 	fmt.Println("")
-	addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
+	addressesResponse,  err := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
+  if err != nil{
+  log.Fatal(err)
+  }
 	addresses := addressesResponse.Address
 	fmt.Println("Addresses:",len(addresses))
 	//fmt.Println(addresses)
@@ -926,9 +931,9 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
       Index:         0,
     },
     SigOpCount: 1,
-    Sequence:        constants.MaxTxInSequenceNum - 1,
+    Sequence: math.MaxUint64-1,
 
-    ////Sequence: lockTime,
+    //Sequence: lockTime,
     //SignatureScript: contractr,
     //UTXOEntry: utxo.NewUTXOEntry(transaction.Tx.Outputs[0].Value,transaction.Tx.Outputs[0].ScriptPublicKey,false,0),
     UTXOEntry: utxo.NewUTXOEntry(transaction.Tx.Outputs[0].Value,transaction.Tx.Outputs[0].ScriptPublicKey,false,0),
@@ -941,9 +946,9 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
 		Inputs: inputs,
 		//LockTime: pushes.LockTime,
 		LockTime:     lockTime,
-		SubnetworkID: subnetworks.SubnetworkIDNative,
+		SubnetworkID: externalapi.DomainSubnetworkID{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 		Gas:          0,
-		Payload:      nil,
+		Payload:      []byte{},
 	}
   sighashReusedValues := &consensushashing.SighashReusedValues{}
 
@@ -962,7 +967,6 @@ func refundContract(contractstr string, txstr string, mnemonics []string, daemon
 
   printContract("Redeem", refundSigScript)
 
-  domainTransaction.Gas=0
   rpcTransaction := appmessage.DomainTransactionToRPCTransaction(domainTransaction)
   printRpcTransaction(rpcTransaction)
   fmt.Println("")
