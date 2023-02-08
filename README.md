@@ -1,12 +1,15 @@
 # kaspaatomicswap
 
-e' tutto rotto
+please donate kaspa:qq4ecuffdwner5kd3gucgt5zhe4wq69crj4shdk32smva6vcj4nsqhl8rj3dx
+really,
+please donate kaspa:qq4ecuffdwner5kd3gucgt5zhe4wq69crj4shdk32smva6vcj4nsqhl8rj3dx
 
+something is working.
+This is a work in progress, not really usable, please read and understand the code. 
 
-please donate
-kaspa:qq4ecuffdwner5kd3gucgt5zhe4wq69crj4shdk32smva6vcj4nsqhl8rj3dx
+...
+to have this working you have to use 
+https://github.com/someone235/kaspad/tree/fix-ExtractAtomicSwapDataPushes
+branch
 
-
-
-
-to run this, u have to use this pr on that repo https://github.com/someone235/kaspad/pull/1
+download it locally and use replace method in the go.mod file
