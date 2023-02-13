@@ -1070,11 +1070,14 @@ fmt.Println("ContractP2SH:")
 fmt.Println("ContractP2SHPkScript:")
   fmt.Println(hex.EncodeToString(contractP2SHPkScript))
   fmt.Println("")
-  txHash := consensushashing.TransactionHash(domainTransaction)
+  txHash,err := serialization.SerializeDomainTransaction(domainTransaction)
+  if err != nil { 
+    log.Fatal(err)
+  }
   return &builtContract{
     contract: contract,
     contractP2SH: contractP2SH,
-    contractTxHash: txHash.ByteSlice(),
+    contractTxHash: txHash,
     contractTx: domainTransaction,
     contractFee: getFee(inputs),
     refundTx: refundTx,
@@ -1117,7 +1120,12 @@ func getFee(inputs []*externalapi.DomainTransactionInput) uint64{
 }
 func getContractOut(contractr []byte, tx *externalapi.DomainTransaction) int {
   contractHash, _ := txscript.PayToScriptHashScript(contractr)
+  fmt.Println("--------------------------------")
+  fmt.Println(hex.EncodeToString(contractHash))
+  fmt.Println("--------------------------------")
   for idx, outputs := range tx.Outputs {
+  fmt.Println(idx,len(tx.Outputs))
+  fmt.Println(hex.EncodeToString(outputs.ScriptPublicKey.Script))
     if hex.EncodeToString(contractHash) == hex.EncodeToString(outputs.ScriptPublicKey.Script){
       return idx
     }
