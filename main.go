@@ -298,14 +298,14 @@ func run() (err error, showUsage bool) {
     if err != nil {
       return fmt.Errorf("failed to decode contract transaction: %v", err), true
     }
-    contractTx, _ := serialization.DeserializePartiallySignedTransaction(contractTxBytes)
+    contractTx, _ := serialization.DeserializeDomainTransaction(contractTxBytes)
 
     secret, err := hex.DecodeString(args[3])
     if err != nil {
       return fmt.Errorf("failed to decode secret: %v", err), true
     }
 
-    cmd = &redeemCmd{contract: contract, contractTx: &contractTx.Tx, secret: secret}
+    cmd = &redeemCmd{contract: contract, contractTx: &contractTx, secret: secret}
 
   case "refund":
     contract, err := hex.DecodeString(args[1])
@@ -317,9 +317,9 @@ func run() (err error, showUsage bool) {
     if err != nil {
       return fmt.Errorf("failed to decode contract transaction: %v", err), true
     }
-    contractTx, _ := serialization.DeserializePartiallySignedTransaction(contractTxBytes)
+    contractTx, _ := serialization.DeserializeDomainTransaction(contractTxBytes)
 
-    cmd = &refundCmd{contract: contract, contractTx: contractTx.Tx}
+    cmd = &refundCmd{contract: contract, contractTx: contractTx}
 
   case "extractsecret":
     redemptionTxBytes, err := hex.DecodeString(args[1])
@@ -354,10 +354,10 @@ func run() (err error, showUsage bool) {
       return fmt.Errorf("failed to decode contract transaction: %v", err), true
     }
 
-    contractTx, _ := serialization.DeserializePartiallySignedTransaction(contractTxBytes)
+    contractTx, _ := serialization.DeserializeDomainTransaction(contractTxBytes)
     addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
 
-    cmd = &auditContractCmd{contract: contract, contractTx: contractTx.Tx,addresses: addressesResponse.Address,keysFile: *keysFile}
+    cmd = &auditContractCmd{contract: contract, contractTx: contractTx,addresses: addressesResponse.Address,keysFile: *keysFile}
 
 
 
@@ -437,7 +437,6 @@ func printRpcTransaction(rpcTransaction *appmessage.RPCTransaction){
     fmt.Println("\t\t\tVersion:",rpcTransaction.Outputs[i].ScriptPublicKey.Version)
     fmt.Println("\t\t\tScript:",rpcTransaction.Outputs[i].ScriptPublicKey.Script)
   }
-
 }
 func printContract( description string, script []byte) {
 
@@ -500,20 +499,6 @@ func rawTxInSignature(extendedKey *bip32.ExtendedKey, tx *externalapi.DomainTran
   }
 
   return txscript.RawTxInSignature(tx, idx, hashType, schnorrKeyPair, sighashReusedValues)
-}
-func isTransactionFullySigned(partiallySignedTransaction *serialization.PartiallySignedTransaction) bool {
-  for _, input := range partiallySignedTransaction.PartiallySignedInputs {
-    numSignatures := 0
-    for _, pair := range input.PubKeySignaturePairs {
-      if pair.Signature != nil {
-        numSignatures++
-      }
-    }
-    if uint32(numSignatures) < input.MinimumSignatures {
-      return false
-    }
-  }
-  return true
 }
 func searchAddressByBlake2b(addresses []string, blake []byte, extendedPublicKeys []string, ecdsa bool) (*util.Address, *string) {
   for i := range addresses {
@@ -710,8 +695,6 @@ func parsePushes(contractr []byte,addresses []string, keysFile *keys.File)(*util
 func sendRawTransaction(tx externalapi.DomainTransaction) (*externalapi.DomainHash, *string, error) {
 
   rpcTransaction := appmessage.DomainTransactionToRPCTransaction(&tx)
-  fmt.Println("TransactionToBeSent")
-  printRpcTransaction(rpcTransaction)
   fmt.Println("")
   fmt.Println("TransactionHash:")
   hash :=  consensushashing.TransactionHash(&tx)
@@ -755,58 +738,12 @@ func getRawChangeAddress(daemonClient pb.KaspawalletdClient, ctx context.Context
   fmt.Println(changeAddr)
   return changeAddr
 }
-func printPartiallySignedTx(tx []byte) {
-  fmt.Println("Transaction HEX")
-  fmt.Println(hex.EncodeToString(tx))
-  partiallySignedTransaction, err := serialization.DeserializePartiallySignedTransaction(tx)
-  if err != nil {
-    log.Fatal(err)
-  }
-
-  fmt.Printf("Transaction ID: \t%s\n", consensushashing.TransactionID(partiallySignedTransaction.Tx))
-  fmt.Println()
-
-  allInputSompi := uint64(0)
-  for index, input := range partiallySignedTransaction.Tx.Inputs {
-    partiallySignedInput := partiallySignedTransaction.PartiallySignedInputs[index]
-    fmt.Printf("Input %d: \tOutpoint: %s:%d \tAmount: %.2f Kaspa\n", index, input.PreviousOutpoint.TransactionID,
-      input.PreviousOutpoint.Index, float64(partiallySignedInput.PrevOutput.Value)/float64(constants.SompiPerKaspa))
-    fmt.Println(input.SignatureScript)
-    signatureScriptstr := dasmScript(input.SignatureScript)
-    fmt.Println("SignatureScript(ASM)")
-    fmt.Println(signatureScriptstr)
-
-
-    allInputSompi += partiallySignedInput.PrevOutput.Value
-  }
-
-  allOutputSompi := uint64(0)
-
-  for index, output := range partiallySignedTransaction.Tx.Outputs {
-    scriptPublicKeyType, scriptPublicKeyAddress, err := txscript.ExtractScriptPubKeyAddress(output.ScriptPublicKey, chainParams)
-    if err != nil {
-      log.Fatal(err)
-    }
-
-    addressString := scriptPublicKeyAddress.EncodeAddress()
-    if scriptPublicKeyType == txscript.NonStandardTy {
-      scriptPublicKeyHex := hex.EncodeToString(output.ScriptPublicKey.Script)
-      addressString = fmt.Sprintf("<Non-standard transaction script public key: %s>", scriptPublicKeyHex)
-
-    }
-    fmt.Printf("Output %d: \tRecipient: %s \tAmount: %.2f Kaspa\n",
-    index, addressString, float64(output.Value)/float64(constants.SompiPerKaspa))
-    allOutputSompi += output.Value
-  }
-  fmt.Println()
-
-  fmt.Printf("Fee:\t%d Sompi\n", allInputSompi-allOutputSompi)
-  fmt.Printf("GAS:\t%d Sompi\n", partiallySignedTransaction.Tx.Gas)
-
-}
 
 func promptPublishTx(tx externalapi.DomainTransaction, name string, daemonClient pb.KaspawalletdClient, ctx context.Context) error {
-//  printPartiallySignedTx(tx)
+  //fmt.Println("TransactionToBeSent")
+  //printRpcTransaction(rpcTransaction)
+  //fmt.Println("HASH")
+  //fmt.Println()
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("Publish %s transaction? [y/N] ", name)
