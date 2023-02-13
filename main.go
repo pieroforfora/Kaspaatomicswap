@@ -399,6 +399,7 @@ func walletPort(params *dagconfig.Params) string {
 		return "8082"
 	}
 }
+/*
 func getEmpty(extendedPublicKeys []string, derivationPath string) []*serialization.PubKeySignaturePair {
   fmt.Println("Into Empty:")
   emptyPubKeySignaturePairs := make([]*serialization.PubKeySignaturePair, len(extendedPublicKeys))
@@ -413,7 +414,7 @@ func getEmpty(extendedPublicKeys []string, derivationPath string) []*serializati
   }
   return emptyPubKeySignaturePairs
 }
-
+*/
 
 func printRpcTransaction(rpcTransaction *appmessage.RPCTransaction){
   fmt.Println("Transaction:")
