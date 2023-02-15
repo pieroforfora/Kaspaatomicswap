@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	//"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -17,6 +16,7 @@ import (
   "log"
   "bytes"
   "github.com/kaspanet/go-secp256k1"
+  "path/filepath"
 
   "github.com/kaspanet/kaspad/cmd/kaspawallet/daemon/client"
   "github.com/kaspanet/kaspad/cmd/kaspawallet/daemon/pb"
@@ -47,18 +47,27 @@ const verify = true
 
 const txVersion = 2
 
+var chainParams = &dagconfig.MainnetParams
 var (
 	flagset     = flag.NewFlagSet("", flag.ExitOnError)
-	connectFlag = flagset.String("s", "localhost", "host[:port] of LEOMERDA Core wallet RPC server")
-	rpcuserFlag = flagset.String("rpcuser", "", "username for wallet RPC authentication")
-	rpcpassFlag = flagset.String("rpcpass", "", "password for wallet RPC authentication")
+	connectWalletFlag = flagset.String("kaspawallet", "localhost:8082", "host[:port] of kaspawallet  RPC server")
+	connectKaspadFlag = flagset.String("kaspad", "localhost:16610", "host[:port] of kaspad RPC server")
+//	rpcuserFlag = flagset.String("rpcuser", "", "username for wallet RPC authentication")
+//	rpcpassFlag = flagset.String("rpcpass", "", "password for wallet RPC authentication")
 	testnetFlag = flagset.Bool("testnet", false, "use testnet network")
-	devnetFlag = flagset.Bool("devnet", false, "use testnet network")
+	devnetFlag = flagset.Bool("devnet", false, "use devnet network")
+	verboseFlag = flagset.Bool("verbose", false, "verbose")
 )
-var chainParams = &dagconfig.DevnetParams
 
-var walletpath = "/home/pieroforfora/.kaspawallet/kaspa-devnet/keys.json"
-const secretSize = 32 
+const secretSize = 32
+
+var (
+  defaultAppDir = util.AppDir("kaspawallet", false)
+)
+func defaultKeysFile(netParams *dagconfig.Params) string {
+  return filepath.Join(defaultAppDir, netParams.Name, "keys.json")
+}
+
 
 var feePerInput = uint64(30000)
 
@@ -66,10 +75,10 @@ var lockTimeInitiateContract = uint64(time.Now().Add(10 * time.Second).Unix()*10
 var lockTimePartecipateContract = uint64(time.Now().Add(5 * time.Second).Unix()*1000)
 
 
-// var amount = uint64(1)
 var amountInSompi = uint64(1000000)
 
-//kaspad --devnet --utxoindex --archival --nodnsseed  --listen 127.0.0.1:16111 --externalip=127.0.0.1 --allow-submit-block-when-not-synced
+//kaspad --devnet --utxoindex --archival --nodnsseed  --listen 127.0.0.1:16111 --externalip=127.0.0.1 --allow-submit-block-when-not-synced  --loglevel=trace
+
 // There are two directions that the atomic swap can be performed, as the
 // initiator can be on either chain.  This tool only deals with creating the
 // Bitcoin transactions for these swaps.  A second tool should be used for the
@@ -79,16 +88,16 @@ var amountInSompi = uint64(1000000)
 // Example scenerios using bitcoin as the second chain:
 //
 // Scenerio 1:
-//   cp1 initiates (dcr)
+//   cp1 initiates (kas)
 //   cp2 participates with cp1 H(S) (LEOMERDA)
 //   cp1 redeems LEOMERDA revealing S
 //     - must verify H(S) in contract is hash of known secret
-//   cp2 redeems dcr with S
+//   cp2 redeems kas with S
 //
 // Scenerio 2:
 //   cp1 initiates (LEOMERDA)
-//   cp2 participates with cp1 H(S) (dcr)
-//   cp1 redeems dcr revealing S
+//   cp2 participates with cp1 H(S) (kas)
+//   cp1 redeems kas revealing S
 //     - must verify H(S) in contract is hash of known secret
 //   cp2 redeems LEOMERDA with S
 
@@ -103,6 +112,7 @@ func init() {
 		fmt.Println("  refund <contract> <contract transaction>")
 		fmt.Println("  extractsecret <redemption transaction> <secret hash>")
 		fmt.Println("  auditcontract <contract> <contract transaction>")
+		fmt.Println("  auditcontractonline <contract> <contract transaction>")
 		fmt.Println()
 		fmt.Println("Flags:")
 		flagset.PrintDefaults()
@@ -149,8 +159,10 @@ type extractSecretCmd struct {
 type auditContractCmd struct {
 	contract   []byte
 	contractTx *externalapi.DomainTransaction
-  addresses  []string
-  keysFile  keys.File
+}
+type auditContractOnlineCmd struct {
+	contract   []byte
+	contractTx *externalapi.DomainTransaction
 }
 
 func main() {
@@ -198,6 +210,8 @@ func run() (err error, showUsage bool) {
 		cmdArgs = 2
 	case "auditcontract":
 		cmdArgs = 2
+	case "auditcontractonline":
+		cmdArgs = 2
 	default:
 		return fmt.Errorf("unknown command %v", args[0]), true
 	}
@@ -218,19 +232,6 @@ func run() (err error, showUsage bool) {
 	}
 
 
-  daemonClient, tearDown, err := client.Connect("localhost:8082")
-  if err != nil {
-    fmt.Println("error:")
-    fmt.Println(err)
-  }
-  defer tearDown()
-  ctx, cancel := context.WithTimeout(context.Background(), (10 * time.Minute))
-  defer cancel()
-
-  keysFile, _ := keys.ReadKeysFile(chainParams, walletpath)
-
-  password := "pieroforfora" //keys.GetPassword("Password:")
-  mnemonics, _ := keysFile.DecryptMnemonics(password)
 
 	var cmd command
 	switch args[0] {
@@ -355,13 +356,22 @@ func run() (err error, showUsage bool) {
     }
 
     contractTx, _ := serialization.DeserializeDomainTransaction(contractTxBytes)
-    addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
 
-    cmd = &auditContractCmd{contract: contract, contractTx: contractTx,addresses: addressesResponse.Address,keysFile: *keysFile}
+    cmd = &auditContractCmd{contract: contract, contractTx: contractTx}
 
+  case "auditcontractonline":
+    contract, err := hex.DecodeString(args[1])
+    if err != nil {
+      return fmt.Errorf("failed to decode contract: %v", err), true
+    }
 
+    contractTxBytes, err := hex.DecodeString(args[2])
+    if err != nil {
+      return fmt.Errorf("failed to decode contract transaction: %v", err), true
+    }
 
-
+    contractTx, _ := serialization.DeserializeDomainTransaction(contractTxBytes)
+    cmd = &auditContractOnlineCmd{contract: contract, contractTx: contractTx}
 	}
 
 	// Offline commands don't need to talk to the wallet.
@@ -369,6 +379,18 @@ func run() (err error, showUsage bool) {
 		return cmd.runOfflineCommand(), false
 	}
 
+  daemonClient, tearDown, err := client.Connect(*connectWalletFlag)
+  if err != nil {
+    log.Fatal(err)
+  }
+  defer tearDown()
+  ctx, cancel := context.WithTimeout(context.Background(), (10 * time.Minute))
+  defer cancel()
+
+  keysFile, _ := keys.ReadKeysFile(chainParams, defaultKeysFile(chainParams))
+
+  password := keys.GetPassword("Password:")
+  mnemonics, _ := keysFile.DecryptMnemonics(password)
 
 	err = cmd.runCommand(mnemonics,daemonClient,ctx,keysFile)
 	return err, false
@@ -399,22 +421,42 @@ func walletPort(params *dagconfig.Params) string {
 		return "8082"
 	}
 }
-/*
-func getEmpty(extendedPublicKeys []string, derivationPath string) []*serialization.PubKeySignaturePair {
-  fmt.Println("Into Empty:")
-  emptyPubKeySignaturePairs := make([]*serialization.PubKeySignaturePair, len(extendedPublicKeys))
-  for i, extendedPublicKey := range extendedPublicKeys {
-    extendedKey, _ := bip32.DeserializeExtendedKey(extendedPublicKey)
-    derivedKey, _ := extendedKey.DeriveFromPath(derivationPath)
-    fmt.Println("keypair", derivedKey.String())
-    fmt.Println("extended", extendedKey)
-    emptyPubKeySignaturePairs[i] = &serialization.PubKeySignaturePair{
-      ExtendedPublicKey: derivedKey.String(),
-    }
+
+func printDomainTransaction(tx *externalapi.DomainTransaction) {
+	fmt.Printf("Transaction ID: \t%s\n", consensushashing.TransactionID(tx))
+	fmt.Println()
+  fmt.Println("Inputs:")
+	allInputSompi := uint64(0)
+	for index, input := range tx.Inputs {
+    allInputSompi += uint64(input.UTXOEntry.Amount())
+    fmt.Printf("\t%v:%d\tAmount: %.8f Kaspa\n",input.PreviousOutpoint.TransactionID,index,getKaspaXSompi(input.UTXOEntry.Amount()))
   }
-  return emptyPubKeySignaturePairs
+  fmt.Println("\nOutputs:")
+  allOutputSompi := uint64(0)
+  for index,output := range(tx.Outputs){
+    scriptPublicKeyType, scriptPublicKeyAddress, err := txscript.ExtractScriptPubKeyAddress(output.ScriptPublicKey, chainParams)
+    if err != nil {
+      log.Fatal(err)
+    }
+
+    addressString := scriptPublicKeyAddress.EncodeAddress()
+    if scriptPublicKeyType == txscript.NonStandardTy {
+      scriptPublicKeyHex := hex.EncodeToString(output.ScriptPublicKey.Script)
+      addressString = fmt.Sprintf("<Non-standard transaction script public key: %s>", scriptPublicKeyHex)
+    }
+    fmt.Printf("\t%d:%s\tAmount: %.8f Kaspa\n",
+      index, addressString, getKaspaXSompi(output.Value))
+
+    allOutputSompi += uint64(output.Value)
+
+  }
+  fmt.Println("")
+	fmt.Printf("Fee:\t%d Sompi\n", allInputSompi-allOutputSompi)
+	fmt.Printf("GAS:\t%d Sompi\n", tx.Gas)
+	fmt.Printf("LockTime:\t%d \n", tx.LockTime)
+  fmt.Println("")
+  fmt.Println("")
 }
-*/
 
 func printRpcTransaction(rpcTransaction *appmessage.RPCTransaction){
   fmt.Println("Transaction:")
@@ -439,9 +481,8 @@ func printRpcTransaction(rpcTransaction *appmessage.RPCTransaction){
     fmt.Println("\t\t\tScript:",rpcTransaction.Outputs[i].ScriptPublicKey.Script)
   }
 }
+
 func printContract( description string, script []byte) {
-
-
   fmt.Println("")
   fmt.Println(description+":")
   fmt.Println(hex.EncodeToString(script))
@@ -457,6 +498,7 @@ func getBlake2b(text []byte) ([]byte){
   slice := hash[:]
   return slice
 }
+
 func dasmScript(script []byte)(string){
   plainScript,err := txscript.DisasmString(0, script)
   if err != nil {
@@ -479,6 +521,7 @@ func extendedKeyFromMnemonicAndPath(mnemonic string, path string, params *dagcon
   }
   return master, nil
 }
+
 func derivedKeyToSchnorrKeypair(extendedKey *bip32.ExtendedKey) *secp256k1.SchnorrKeyPair{
   privateKey := extendedKey.PrivateKey()
   schnorrKeyPair,_ := privateKey.ToSchnorr()
@@ -486,6 +529,7 @@ func derivedKeyToSchnorrKeypair(extendedKey *bip32.ExtendedKey) *secp256k1.Schno
 
 
 }
+
 func rawTxInSignature(extendedKey *bip32.ExtendedKey, tx *externalapi.DomainTransaction, idx int, hashType consensushashing.SigHashType,
   sighashReusedValues *consensushashing.SighashReusedValues, ecdsa bool) ([]byte, error) {
 
@@ -501,6 +545,7 @@ func rawTxInSignature(extendedKey *bip32.ExtendedKey, tx *externalapi.DomainTran
 
   return txscript.RawTxInSignature(tx, idx, hashType, schnorrKeyPair, sighashReusedValues)
 }
+
 func searchAddressByBlake2b(addresses []string, blake []byte, extendedPublicKeys []string, ecdsa bool) (*util.Address, *string) {
   for i := range addresses {
     path := fmt.Sprintf("m/%d/%d", libkaspawallet.ExternalKeychain, i+1)
@@ -511,6 +556,7 @@ func searchAddressByBlake2b(addresses []string, blake []byte, extendedPublicKeys
   }
   return nil,nil
 }
+
 func getAddressPath(addresses []string, address string, extendedPublicKeys []string, ecdsa bool) *string {
   for i, taddress := range addresses {
     if taddress == address {
@@ -523,6 +569,7 @@ func getAddressPath(addresses []string, address string, extendedPublicKeys []str
   }
   return nil
 }
+
 func getAddresses(daemonClient pb.KaspawalletdClient, ctx context.Context) []string {
   addressesResponse, err := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
   if err != nil {
@@ -531,6 +578,7 @@ func getAddresses(daemonClient pb.KaspawalletdClient, ctx context.Context) []str
   }
   return addressesResponse.Address
 }
+
 func versionFromParams(params *dagconfig.Params) ([4]byte, error) {
   switch params.Name {
   case dagconfig.MainnetParams.Name:
@@ -544,6 +592,7 @@ func versionFromParams(params *dagconfig.Params) ([4]byte, error) {
   }
   return [4]byte{}, errors.Errorf("unknown network %s", params.Name)
 }
+
 func defaultPath(isMultisig bool) string {
   purpose := SingleSignerPurpose
   if isMultisig {
@@ -552,6 +601,7 @@ func defaultPath(isMultisig bool) string {
 
   return fmt.Sprintf("m/%d'/%d'/0'", purpose, CoinType)
 }
+
 const (
   SingleSignerPurpose = 44
   // Note: this is not entirely compatible to BIP 45 since
@@ -561,94 +611,30 @@ const (
   CoinType = 111111
 )
 
-/*
-// fundRawTransaction calls the fundrawtransaction JSON-RPC method.  It is
-// implemented manually as client support is currently missing from the
-// LEOMERDAd/rpcclient package.
-func fundRawTransaction(c *rpc.RPCClient, tx *externalapi.DomainTransaction, feePerKb uint64) (fundedTx *externalapi.DomainTransaction, fee uint64, err error) {
-	var buf bytes.Buffer
-	buf.Grow(tx.SerializeSize())
-	tx.Serialize(&buf)
-	param0, err := json.Marshal(hex.EncodeToString(buf.Bytes()))
-	if err != nil {
-		return nil, 0, err
-	}
-	param1, err := json.Marshal(struct {
-		FeeRate float64 `json:"feeRate"`
-	}{
-		FeeRate: feePerKb.ToLEOMERDA(),
-	})
-	if err != nil {
-		return nil, 0, err
-	}
-	params := []json.RawMessage{param0, param1}
-	rawResp, err := c.RawRequest("fundrawtransaction", params)
-	if err != nil {
-		return nil, 0, err
-	}
-	var resp struct {
-		Hex       string  `json:"hex"`
-		Fee       float64 `json:"fee"`
-		ChangePos float64 `json:"changepos"`
-	}
-	err = json.Unmarshal(rawResp, &resp)
-	if err != nil {
-		return nil, 0, err
-	}
-	fundedTxBytes, err := hex.DecodeString(resp.Hex)
-	if err != nil {
-		return nil, 0, err
-	}
-	fundedTx = &externalapi.DomainTransaction{}
-	err = fundedTx.Deserialize(bytes.NewReader(fundedTxBytes))
-	if err != nil {
-		return nil, 0, err
-	}
-	feeAmount, err := util.NewAmount(resp.Fee)
-	if err != nil {
-		return nil, 0, err
-	}
-	return fundedTx, feeAmount, nil
-}
-*/
-/*
-// signRawTransaction calls the signRawTransaction JSON-RPC method.  It is
-// implemented manually as client support is currently outdated from the
-// LEOMERDAd/rpcclient package.
-func signRawTransaction(c *rpc.RPCClient, tx *externalapi.DomainTransaction) (fundedTx *externalapi.DomainTransaction, complete bool, err error) {
-	var buf bytes.Buffer
-	buf.Grow(tx.SerializeSize())
-	tx.Serialize(&buf)
-	param, err := json.Marshal(hex.EncodeToString(buf.Bytes()))
-	if err != nil {
-		return nil, false, err
-	}
-	rawResp, err := c.RawRequest("signrawtransactionwithwallet", []json.RawMessage{param})
-	if err != nil {
-		return nil, false, err
-	}
-	var resp struct {
-		Hex      string `json:"hex"`
-		Complete bool   `json:"complete"`
-	}
-	err = json.Unmarshal(rawResp, &resp)
-	if err != nil {
-		return nil, false, err
-	}
-	fundedTxBytes, err := hex.DecodeString(resp.Hex)
-	if err != nil {
-		return nil, false, err
-	}
-	fundedTx = &externalapi.DomainTransaction{}
-	err = fundedTx.Deserialize(bytes.NewReader(fundedTxBytes))
-	if err != nil {
-		return nil, false, err
-	}
-	return fundedTx, resp.Complete, nil
-}
-*/
+func printAddressPushes(name string, addresses []string ,blake []byte,keysFile *keys.File)(*util.Address, *string){
+  var addr *util.Address
+  var path *string
+  if keysFile != nil{
+    addr, path = searchAddressByBlake2b(addresses,blake,keysFile.ExtendedPublicKeys, keysFile.ECDSA)
+  }
+  if *verboseFlag {
+    fmt.Println("Pushes -", name,"from Contract:")
+    if addr!=nil {
+       fmt.Println(*addr)
+    }
+    fmt.Println(hex.EncodeToString(blake))
+    fmt.Println("")
+  }
+  if addr != nil {
+    return addr, path
+  } else {
+    return nil,nil
+  }
 
-func parsePushes(contractr []byte,addresses []string, keysFile *keys.File)(*util.Address, *string, *util.Address, *string, string, int64, uint64){
+
+}
+
+func parsePushes(contractr []byte,addresses []string, keysFile *keys.File)(*util.Address, *string, []byte, *util.Address, *string, []byte, string, int64, uint64){
   pushes, err := txscript.ExtractAtomicSwapDataPushes(0, contractr)
   if err != nil {
     log.Fatal(err)
@@ -656,65 +642,45 @@ func parsePushes(contractr []byte,addresses []string, keysFile *keys.File)(*util
   if pushes == nil {
     log.Fatal("contract is not an atomic swap script recognized by this tool")
   }
+  recipientAddr, recipient_path := printAddressPushes("Recipient", addresses, pushes.RecipientBlake2b[:], keysFile)
+  refundAddr, refund_path := printAddressPushes("Refund", addresses, pushes.RefundBlake2b[:], keysFile)
 
-  recipientAddr, recipient_path := searchAddressByBlake2b(addresses,pushes.RecipientBlake2b[:],keysFile.ExtendedPublicKeys, keysFile.ECDSA)
+  if *verboseFlag{
+    fmt.Println("Pushes - Secret hash from Contract:")
+    fmt.Println(hex.EncodeToString(pushes.SecretHash[:]))
+    fmt.Println("")
 
-  fmt.Println("Pushes - Recipient from Contract:")
-  if recipientAddr!=nil {
-     fmt.Println(*recipientAddr)
+    fmt.Println("Pushes - Secret size from Contract:")
+    fmt.Println(pushes.SecretSize)
+    fmt.Println("")
+
+    fmt.Println("Pushes - LockTime from Contract:")
+    fmt.Println(pushes.LockTime, "-",time.Unix(int64(pushes.LockTime/1000), 0))
+    fmt.Println("")
   }
-  fmt.Println(hex.EncodeToString(pushes.RecipientBlake2b[:]))
-
-  fmt.Println("")
-
-  refundAddr, refund_path := searchAddressByBlake2b(addresses,pushes.RefundBlake2b[:],keysFile.ExtendedPublicKeys, keysFile.ECDSA)
-
-  fmt.Println("Pushes - Refund from Contract:")
-  if refundAddr != nil {
-    fmt.Println(*refundAddr)
-  }
-  fmt.Println(hex.EncodeToString(pushes.RefundBlake2b[:]))
-  fmt.Println("")
-
-  fmt.Println("Pushes - Secret hash from Contract:")
-  fmt.Println(hex.EncodeToString(pushes.SecretHash[:]))
-  fmt.Println("")
-
-  fmt.Println("Pushes - Secret size from Contract:")
-  fmt.Println(pushes.SecretSize)
-  fmt.Println("")
-
-  fmt.Println("Pushes - LockTime from Contract:")
-  fmt.Println(pushes.LockTime)
-  fmt.Println("")
-  return recipientAddr, recipient_path, refundAddr, refund_path, hex.EncodeToString(pushes.SecretHash[:]), pushes.SecretSize, pushes.LockTime
-
+  return recipientAddr, recipient_path, pushes.RecipientBlake2b[:], refundAddr, refund_path, pushes.RefundBlake2b[:], hex.EncodeToString(pushes.SecretHash[:]), pushes.SecretSize, pushes.LockTime
 }
+
 // sendRawTransaction calls the signRawTransaction JSON-RPC method.  It is
 // implemented manually as client support is currently outdated from the
 // LEOMERDAd/rpcclient package.
-func sendRawTransaction(tx externalapi.DomainTransaction) (*externalapi.DomainHash, *string, error) {
-
+func sendRawTransaction(tx externalapi.DomainTransaction) (*string, error) {
   rpcTransaction := appmessage.DomainTransactionToRPCTransaction(&tx)
-  fmt.Println("")
-  fmt.Println("TransactionHash:")
-  hash :=  consensushashing.TransactionHash(&tx)
-  fmt.Println(hash.ByteSlice())
-  kaspadClient, err := rpcclient.NewRPCClient("localhost:16610")
- 
+  kaspadClient, err := rpcclient.NewRPCClient(*connectKaspadFlag)
+
   if err != nil {
-    fmt.Println("impossible to connect to kaspad (localhost:16610)",err)
-    return nil,nil,err
+    fmt.Println("impossible to connect to kaspad ",*connectKaspadFlag,err)
+    return nil,err
   }
   txID,err :=sendTransaction(kaspadClient, rpcTransaction)
   if err != nil {
     fmt.Println("impossible to send transaction",err)
-    return nil,nil,err
+    return nil,err
   }
   fmt.Println("Transactions were sent successfully!")
   fmt.Println("Transaction ID(s): ")
   fmt.Printf("\t%s\n", txID)
-  return hash,&txID,nil
+  return &txID,nil
 
 }
 
@@ -723,8 +689,6 @@ func sendTransaction(client *rpcclient.RPCClient, rpcTransaction *appmessage.RPC
   if err != nil {
     return "", errors.Wrapf(err, "error submitting transaction")
   }
-  fmt.Println(submitTransactionResponse.TransactionID)
-  fmt.Println(submitTransactionResponse.Error)
   return submitTransactionResponse.TransactionID, nil
 }
 
@@ -735,16 +699,10 @@ func sendTransaction(client *rpcclient.RPCClient, rpcTransaction *appmessage.RPC
 func getRawChangeAddress(daemonClient pb.KaspawalletdClient, ctx context.Context) (util.Address,) {
   changeAddrs, _ := daemonClient.NewAddress(ctx, &pb.NewAddressRequest{})
   changeAddr, _ := util.DecodeAddress(changeAddrs.Address, chainParams.Prefix)
-  fmt.Println("CHANGE ADDR:")
-  fmt.Println(changeAddr)
   return changeAddr
 }
 
 func promptPublishTx(tx externalapi.DomainTransaction, name string, daemonClient pb.KaspawalletdClient, ctx context.Context) error {
-  //fmt.Println("TransactionToBeSent")
-  //printRpcTransaction(rpcTransaction)
-  //fmt.Println("HASH")
-  //fmt.Println()
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("Publish %s transaction? [y/N] ", name)
@@ -762,12 +720,11 @@ func promptPublishTx(tx externalapi.DomainTransaction, name string, daemonClient
 			fmt.Println("please answer y or n")
 			continue
 		}
-    hash,txID,err:=sendRawTransaction(tx)
+    txID,err:=sendRawTransaction(tx)
 		if err != nil {
 			return fmt.Errorf("sendrawtransaction: %v", err)
 		}
 		fmt.Printf("Published %s transaction (%v)\n", name, txID)
-    fmt.Printf("\n\n%x",hash)
 		return nil
 	}
 }
@@ -788,6 +745,7 @@ type spendArgs struct {
 	secretHash []byte
   secret     []byte
 }
+
 // builtContract houses the details regarding a contract and the contract
 // payment transaction, as well as the transaction to perform a refund.
 type builtContract struct {
@@ -801,7 +759,7 @@ type builtContract struct {
 }
 
 func getContractIn(amount uint64, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) ([]*externalapi.DomainTransactionInput,uint64,[]string){
-  kaspadClient, _ := rpcclient.NewRPCClient("localhost:16610")
+  kaspadClient, _ := rpcclient.NewRPCClient(*connectKaspadFlag)
   addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
 
   getUTXOsByAddressesResponse,_  := kaspadClient.GetUTXOsByAddresses(addressesResponse.Address)
@@ -814,7 +772,6 @@ func getContractIn(amount uint64, daemonClient pb.KaspawalletdClient, ctx contex
   var paths []string
 
   dagInfo, _ := kaspadClient.GetBlockDAGInfo()
-  fmt.Println(len(getUTXOsByAddressesResponse.Entries))
   for _, entry := range getUTXOsByAddressesResponse.Entries {
     if !isUTXOSpendable(entry, dagInfo.VirtualDAAScore) {
       continue
@@ -839,7 +796,6 @@ func getContractIn(amount uint64, daemonClient pb.KaspawalletdClient, ctx contex
           entry.UTXOEntry.IsCoinbase,
           entry.UTXOEntry.BlockDAAScore,
         ),
- 
       })
 
       input_amount += uint64(entry.UTXOEntry.Amount)
@@ -850,7 +806,7 @@ func getContractIn(amount uint64, daemonClient pb.KaspawalletdClient, ctx contex
     }
   }
   if !done{
-      log.Fatal("not enough inputs to spend")
+    log.Fatal("not enough inputs to spend")
   }
   return inputs,  change, paths
 }
@@ -865,61 +821,6 @@ func isUTXOSpendable(entry *appmessage.UTXOsByAddressesEntry, virtualSelectedPar
   }
   coinbaseMaturity := chainParams.BlockCoinbaseMaturity
   return blockDAAScore+coinbaseMaturity < virtualSelectedParentBlueScore
-}
-
-func getContractInputs(amount uint64, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) ([]*externalapi.DomainTransactionInput,uint64,[]string){
-
-  addressesResponse, _ := daemonClient.ShowAddresses(ctx, &pb.ShowAddressesRequest{})
-
-  input_amount := uint64(0)
-  inputs := []*externalapi.DomainTransactionInput{}
-  done := false
-  change := uint64(0)
-  //kaspadClient, err := rpcclient.NewRPCClient("localhost:16610")
-  var paths []string
-for idx, address := range addressesResponse.Address {
-    fmt.Println(address)
-    addr_utxos, _ := daemonClient.GetExternalSpendableUTXOs(ctx, &pb.GetExternalSpendableUTXOsRequest{})
-    for _, utxo := range addr_utxos.Entries {
-      if input_amount < ( amount+ getFee(inputs)) {
-
-    paths = append(paths, fmt.Sprintf("m/%d/%d", libkaspawallet.ExternalKeychain, idx+1))
-      fmt.Println("utxo:")
-      fmt.Println(utxo)
-      fmt.Println("")
-
-      txid, _ := externalapi.NewDomainTransactionIDFromString(utxo.Outpoint.TransactionId)
-      script_pub_key,_ := hex.DecodeString(utxo.UtxoEntry.ScriptPublicKey.ScriptPublicKey)
-
-fmt.Println(1)
-      inputs = append(inputs, &externalapi.DomainTransactionInput{PreviousOutpoint: externalapi.DomainOutpoint{
-          TransactionID:    *txid,
-          Index:            utxo.Outpoint.Index,
-        },
-        SigOpCount:         1,
-        UTXOEntry:          UTXO.NewUTXOEntry(
-          utxo.UtxoEntry.Amount,
-          &externalapi.ScriptPublicKey{
-            Version: uint16(utxo.UtxoEntry.ScriptPublicKey.Version),
-            Script: script_pub_key,
-          },
-          utxo.UtxoEntry.IsCoinbase,
-          utxo.UtxoEntry.BlockDaaScore,
-        ),
-      })
-fmt.Println(1)
-        //scriptPublicKey, _ := hex.DecodeString(utxo.UtxoEntry.ScriptPublicKey.ScriptPublicKey)
-      input_amount += uint64(utxo.UtxoEntry.Amount)
-      change = input_amount - amount
-    } else {
-      done = true
-      break
-}    }
-  }
-  if !done{
-      log.Fatal("not enough inputs to spend")
-  }
-  return inputs,  change, paths
 }
 
 // builtContract houses the details regarding a contract and the contract
@@ -949,15 +850,12 @@ func buildContract(daemonClient pb.KaspawalletdClient, ctx context.Context, mnem
 		return nil, err
 	}
 
-//  inputs, partiallySignedInputs, changeAmount := getContractInputs(args.amount, daemonClient,ctx, keysFile)
   inputs,  changeAmount, paths := getContractIn(args.amount, daemonClient,ctx, keysFile)
-  //addresses := getAddresses(daemonClient,ctx)
-
 
   changeAddrs, _ := daemonClient.NewAddress(ctx, &pb.NewAddressRequest{})
   changeAddr, _ := util.DecodeAddress(changeAddrs.Address, chainParams.Prefix)
-
   changeAddressScript, _ := txscript.PayToAddrScript(changeAddr)
+
   domainTransaction := &externalapi.DomainTransaction{
     Version: constants.MaxTransactionVersion,
     Inputs:  inputs,
@@ -994,24 +892,11 @@ func buildContract(daemonClient pb.KaspawalletdClient, ctx context.Context, mnem
 
 
   refundTx, refundFee := buildSpend(contract, domainTransaction, nil, mnemonics,daemonClient,ctx,keysFile)
-
-  fmt.Println("Contract:")
-  fmt.Println(hex.EncodeToString(contract))
-  fmt.Println(contract)
-  fmt.Println("")
-
-fmt.Println("ContractP2SH:")
-  fmt.Println(contractP2SH)
-  fmt.Println("")
-
-
-fmt.Println("ContractP2SHPkScript:")
-  fmt.Println(hex.EncodeToString(contractP2SHPkScript))
-  fmt.Println("")
   txHash,err := serialization.SerializeDomainTransaction(domainTransaction)
-  if err != nil { 
+  if err != nil {
     log.Fatal(err)
   }
+
   return &builtContract{
     contract: contract,
     contractP2SH: contractP2SH,
@@ -1023,14 +908,13 @@ fmt.Println("ContractP2SHPkScript:")
   }, nil
 }
 
-
 func getKeys(path string, mnemonics []string, keysFile *keys.File)(*bip32.ExtendedKey, []byte){
   extendedKey, _ := extendedKeyFromMnemonicAndPath(mnemonics[0], defaultPath(false), chainParams)
   derivedKey, err := extendedKey.DeriveFromPath(path)
   if err != nil { log.Fatal(err)}
   return derivedKey, getSerializedPublicKey(derivedKey, keysFile)
-
 }
+
 func getSerializedPublicKey(derivedKey *bip32.ExtendedKey, keysFile *keys.File)([]byte){
   publicKey,_ := derivedKey.PublicKey()
   if keysFile.ECDSA {
@@ -1053,24 +937,21 @@ func getSerializedPublicKey(derivedKey *bip32.ExtendedKey, keysFile *keys.File)(
 
   }
 }
+
 func getFee(inputs []*externalapi.DomainTransactionInput) uint64{
   return uint64(feePerInput)*uint64(len(inputs)+1)
 }
+
 func getContractOut(contractr []byte, tx *externalapi.DomainTransaction) int {
   contractHash, _ := txscript.PayToScriptHashScript(contractr)
-  fmt.Println("--------------------------------")
-  fmt.Println(hex.EncodeToString(contractHash))
-  fmt.Println("--------------------------------")
   for idx, outputs := range tx.Outputs {
-  fmt.Println(idx,len(tx.Outputs))
-  fmt.Println(hex.EncodeToString(outputs.ScriptPublicKey.Script))
     if hex.EncodeToString(contractHash) == hex.EncodeToString(outputs.ScriptPublicKey.Script){
       return idx
     }
   }
   panic("contract not fonud")
-  
 }
+
 func buildSpend(contract []byte,transaction *externalapi.DomainTransaction, secret *[]byte, mnemonics []string, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File)(*externalapi.DomainTransaction, uint64) {
   contract_idx := getContractOut(contract,transaction)
   txid := consensushashing.TransactionID(transaction)
@@ -1080,13 +961,13 @@ func buildSpend(contract []byte,transaction *externalapi.DomainTransaction, secr
     log.Fatal(err)
   }
   addresses := addressesResponse.Address
-  redeemAddr, redeem_path, refundAddr, refund_path, _, _, lockTime := parsePushes(contract, addresses,keysFile)
+  redeemAddr, redeem_path,_, refundAddr, refund_path, _, _, _, lockTime := parsePushes(contract, addresses,keysFile)
   isRedeem := (secret != nil)
   if (refundAddr == nil || refund_path == nil) && !isRedeem {
     log.Fatal("refundAddress is unknown I'm not able to sign refund transaction")
   } else {
     if (redeemAddr == nil || redeem_path == nil) && isRedeem{
-      log.Fatal("refundAddress is unknown I'm not able to sign redeem transaction")
+      log.Fatal("redeemAddress is unknown I'm not able to sign redeem transaction")
     }
   }
   var recipientAddr *util.Address
@@ -1139,9 +1020,7 @@ func buildSpend(contract []byte,transaction *externalapi.DomainTransaction, secr
   domainTransaction.Inputs[0].SignatureScript =   sigScript
 
   return domainTransaction, spend_fees
-
 }
-
 
 func sha256Hash(x []byte) []byte {
 	h := sha256.Sum256(x)
@@ -1169,35 +1048,35 @@ func (cmd *initiateCmd) runCommand(mnemonics []string, daemonClient pb.Kaspawall
 	if err != nil {
 		return err
 	}
-  printCommand(secret[:],secretHash,b,mnemonics,keysFile)
+  printCommand(secret[:],secretHash,b)
 	return promptPublishTx(*b.contractTx, "contract",daemonClient,ctx)
 }
-func printCommand(secret []byte, secretHash []byte, b *builtContract, mnemonics []string, keysFile *keys.File){
-	//contractFeePerKb := calcFeePerKb(b.contractFee, b.contractTx.SerializeSize())
-	//refundFeePerKb := calcFeePerKb(b.refundFee, b.refundTx.SerializeSize())
+
+func printTransaction(tx *externalapi.DomainTransaction, name string){
+  if *verboseFlag {
+    printDomainTransaction(tx)
+  }
+  fmt.Printf("%v transaction (%v):\n", name, consensushashing.TransactionID(tx))
+  txHash,err  := serialization.SerializeDomainTransaction(tx)
+  if err != nil{
+    log.Fatal("Impossible To deserialize %v Transaction:",name, tx)
+  }
+  fmt.Printf("%x\n\n", txHash)
+
+}
+
+func printCommand(secret []byte, secretHash []byte, b *builtContract){
   if secret != nil{
 	  fmt.Printf("Secret:      %x\n", secret)
   }
 	fmt.Printf("Secret hash: %x\n\n", secretHash)
-	//fmt.Printf("Contract fee: %v (%0.8f LEOMERDA/kB)\n", b.contractFee, contractFeePerKb)
-	//fmt.Printf("Refund fee:   %v (%0.8f LEOMERDA/kB)\n\n", b.refundFee, refundFeePerKb)
-	fmt.Printf("Contract (%v):\n", b.contract)
+	fmt.Printf("Contract (%v):\n", b.contractP2SH)
 	fmt.Printf("%x\n\n", b.contract)
-	fmt.Printf("Contract transaction (%v):\n", consensushashing.TransactionID(b.contractTx))
-	fmt.Printf("%x\n\n", b.contractTxHash)
-	fmt.Printf("Refund transaction (%v):\n", consensushashing.TransactionID(b.refundTx))
-  partiallySigned := &serialization.PartiallySignedTransaction{
-    Tx:                    b.refundTx,
-    PartiallySignedInputs: []*serialization.PartiallySignedInput{},
-  }
-  ps, _ := serialization.SerializePartiallySignedTransaction(partiallySigned)
-  signedTransaction, err := libkaspawallet.Sign(chainParams, mnemonics, ps, keysFile.ECDSA)
-  if err != nil {
-    log.Fatal(err)
-  }
+  printTransaction(b.contractTx, "ContractTx")
+  printTransaction(b.refundTx,"RefundTx")
 
-	fmt.Printf("%x\n\n", signedTransaction)
 }
+
 func (cmd *participateCmd) runCommand(mnemonics []string, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) error {
 	// locktime after 500,000,000 (Tue Nov  5 00:53:20 1985 UTC) is interpreted
 	// as a unix time rather than a block height.
@@ -1212,22 +1091,20 @@ func (cmd *participateCmd) runCommand(mnemonics []string, daemonClient pb.Kaspaw
 		return err
 	}
 
-  printCommand(nil,cmd.secretHash,b,mnemonics,keysFile)
+  printCommand(nil,cmd.secretHash,b)
 
 	return promptPublishTx(*b.contractTx, "contract", daemonClient, ctx)
 }
 
 func (cmd *redeemCmd) runCommand(mnemonics []string, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) error {
-
   redeemTx,_ := buildSpend(cmd.contract, *cmd.contractTx, &cmd.secret, mnemonics,daemonClient,ctx,keysFile)
-
+  printTransaction(redeemTx,"RedeemTx")
 	return promptPublishTx(*redeemTx, "redeem",daemonClient,ctx)
 }
 
 func (cmd *refundCmd) runCommand(mnemonics []string, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) error {
-
   refundTx,_ := buildSpend(cmd.contract, cmd.contractTx, nil, mnemonics,daemonClient,ctx,keysFile)
-
+  printTransaction(refundTx,"RefundTx")
 	return promptPublishTx(*refundTx, "refund",daemonClient,ctx)
 }
 
@@ -1260,39 +1137,63 @@ func (cmd *auditContractCmd) runCommand(mnemonics []string, daemonClient pb.Kasp
 	return cmd.runOfflineCommand()
 }
 
-func (cmd *auditContractCmd) runOfflineCommand() error {
-  idx := getContractOut(cmd.contract,cmd.contractTx)
-  redeemAddr,_,refundAddr,_,secretHash,pushesSecretSize,locktime := parsePushes(cmd.contract,cmd.addresses,&cmd.keysFile)
-	if pushesSecretSize != secretSize {
-		return fmt.Errorf("contract specifies strange secret size %v", pushesSecretSize)
-	}
+func (cmd *auditContractOnlineCmd) runCommand(mnemonics []string, daemonClient pb.KaspawalletdClient, ctx context.Context, keysFile *keys.File) error {
+  addresses := getAddresses(daemonClient,ctx)
+  redeem_addr, _, redeem2b, refund_addr, _, refund2b, secretHash, pushesSecretSize, locktime := parsePushes(cmd.contract,addresses,keysFile)
+  printAuditResult(cmd.contract,cmd.contractTx,redeem_addr,redeem2b,refund_addr,refund2b,secretHash,pushesSecretSize,locktime)
 
-  contractP2SH, err := util.NewAddressScriptHash(cmd.contract, chainParams.Prefix)
+
+	return nil
+}
+
+func getKaspaXSompi(value uint64) float64{
+  return float64(value)/float64(constants.SompiPerKaspa)
+}
+
+func printAuditResult(contract []byte, contractTx *externalapi.DomainTransaction , recipient_addr *util.Address, recipient2b []byte, refund_addr *util.Address, refund2b []byte, secretHash string, pushesSecretSize int64, locktime uint64 ) error{
+  idx := getContractOut(contract,contractTx)
+  if pushesSecretSize != secretSize {
+    return fmt.Errorf("contract specifies strange secret size %v", pushesSecretSize)
+  }
+
+  contractP2SH, err := util.NewAddressScriptHash(contract, chainParams.Prefix)
   if err != nil {
     log.Fatal(err)
   }
 
-	fmt.Printf("Contract address:        %v\n", contractP2SH)
-	fmt.Printf("Contract value:          %v\n", cmd.contractTx.Outputs[idx].Value)
-	fmt.Printf("Recipient address:       %v\n", redeemAddr)
-	fmt.Printf("Author's refund address: %v\n\n", refundAddr)
+  fmt.Printf("Contract address:         %v\n", contractP2SH)
+  fmt.Printf("Contract value:           %.8f\n", getKaspaXSompi(contractTx.Outputs[idx].Value))
+  fmt.Printf("Recipient blake2b:        %x\n", recipient2b)
+  if recipient_addr != nil {
+    fmt.Printf("Recipient address:        %v\n", *recipient_addr)
+  }
+  fmt.Printf("Author's refund blake2b:  %x\n", refund2b)
+  if refund_addr != nil {
+    fmt.Printf("Autor's refund address:   %v\n", *refund_addr)
+  }
+  fmt.Println("")
+  fmt.Printf("Secret hash(len:%d):      %v\n\n", secretSize, secretHash)
 
-	fmt.Printf("Secret hash: %x\n\n", secretHash)
+  if locktime>= uint64(constants.LockTimeThreshold) {
+    t := time.Unix(int64(locktime/1000), 0)
+    fmt.Printf("Locktime: %v\n", t.UTC())
+    reachedAt := time.Until(t).Truncate(time.Second)
+    if reachedAt > 0 {
+      fmt.Printf("Locktime reached in %v\n", reachedAt)
+    } else {
+      fmt.Printf("Contract refund time lock has expired\n")
+    }
+  } else {
+    fmt.Printf("Locktime: block %v\n", locktime)
+  }
 
-	if locktime>= uint64(constants.LockTimeThreshold) {
-		t := time.Unix(int64(locktime), 0)
-		fmt.Printf("Locktime: %v\n", t.UTC())
-		reachedAt := time.Until(t).Truncate(time.Second)
-		if reachedAt > 0 {
-			fmt.Printf("Locktime reached in %v\n", reachedAt)
-		} else {
-			fmt.Printf("Contract refund time lock has expired\n")
-		}
-	} else {
-		fmt.Printf("Locktime: block %v\n", locktime)
-	}
+  return nil
+}
 
-	return nil
+func (cmd *auditContractCmd) runOfflineCommand() error {
+  _, _, redeem2b, _, _, refund2b, secretHash, pushesSecretSize, locktime := parsePushes(cmd.contract,[]string{},nil)
+  printAuditResult(cmd.contract,cmd.contractTx,nil,redeem2b,nil,refund2b,secretHash,pushesSecretSize,locktime)
+  return nil
 }
 
 
@@ -1322,8 +1223,9 @@ func atomicSwapContract(pkhMe, pkhThem []byte, locktime uint64, secretHash []byt
     b.AddOp(txscript.OpSHA256)
     b.AddData(secretHash)
     b.AddOp(txscript.OpEqualVerify)
-    
-    // Verify their signature is being used to redeem the output.  This    // would normally end with OP_EQUALVERIFY OP_CHECKSIG but this has been
+
+    // Verify their signature is being used to redeem the output.  This    
+    // would normally end with OP_EQUALVERIFY OP_CHECKSIG but this has been
     // moved outside of the branch to save a couple bytes.
     b.AddOp(txscript.OpDup)
     b.AddOp(txscript.OpBlake2b)
@@ -1335,8 +1237,10 @@ func atomicSwapContract(pkhMe, pkhThem []byte, locktime uint64, secretHash []byt
     // CLTV).
     b.AddLockTimeNumber(locktime)
     b.AddOp(txscript.OpCheckLockTimeVerify)
-//remove as SomeOne235 commit in txscripts extractAtomicSwapDataPushes
-//    b.AddOp(txscript.OpDrop)
+
+    //removed as SomeOne235 commit in txscripts extractAtomicSwapDataPushes
+    //    b.AddOp(txscript.OpDrop)
+
     // Verify our signature is being used to redeem the output.  This would
     // normally end with OP_EQUALVERIFY OP_CHECKSIG but this has been moved
     // outside of the branch to save a couple bytes.
