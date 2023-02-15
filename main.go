@@ -89,21 +89,21 @@ var amountInSompi = uint64(1000000)
 //
 // Scenerio 1:
 //   cp1 initiates (kas)
-//   cp2 participates with cp1 H(S) (LEOMERDA)
-//   cp1 redeems LEOMERDA revealing S
+//   cp2 participates with cp1 H(S) (btc)
+//   cp1 redeems btc revealing S
 //     - must verify H(S) in contract is hash of known secret
 //   cp2 redeems kas with S
 //
 // Scenerio 2:
-//   cp1 initiates (LEOMERDA)
+//   cp1 initiates (btc)
 //   cp2 participates with cp1 H(S) (kas)
 //   cp1 redeems kas revealing S
 //     - must verify H(S) in contract is hash of known secret
-//   cp2 redeems LEOMERDA with S
+//   cp2 redeems btc with S
 
 func init() {
 	flagset.Usage = func() {
-		fmt.Println("Usage: LEOMERDAatomicswap [flags] cmd [cmd args]")
+		fmt.Println("Usage: btcatomicswap [flags] cmd [cmd args]")
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("  initiate <participant address> <amount>")
@@ -663,7 +663,7 @@ func parsePushes(contractr []byte,addresses []string, keysFile *keys.File)(*util
 
 // sendRawTransaction calls the signRawTransaction JSON-RPC method.  It is
 // implemented manually as client support is currently outdated from the
-// LEOMERDAd/rpcclient package.
+// btcd/rpcclient package.
 func sendRawTransaction(tx externalapi.DomainTransaction) (*string, error) {
   rpcTransaction := appmessage.DomainTransactionToRPCTransaction(&tx)
   kaspadClient, err := rpcclient.NewRPCClient(*connectKaspadFlag)
